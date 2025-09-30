@@ -1,0 +1,86 @@
+trigger:
+  - master
+
+resources:
+  - repo: self
+
+variables:
+  # Container registry service connection established during pipeline creation
+  dockerRegistryServiceConnection: "acrlpms-sc"
+  imageRepository: "develop/tripatra-dct-service-config"
+  containerRegistry: "acrlpms.azurecr.io"
+  dockerfilePath: "**/Dockerfile.azure-deployment"
+  tag: "$(Build.BuildId)"
+
+  # Agent VM image name
+  vmImageName: "ubuntu-latest"
+
+stages:
+  - stage: Build
+    displayName: Build stage
+    jobs:
+      - job: Build
+        displayName: Build
+        pool:
+          #name: self-hosted
+          vmImage: $(vmImageName)
+        steps:
+          #  🛠️ Debugging step to check if the Dockerfile is present
+          - script: |
+              echo "Checking Build Context:"
+              ls -al $(Build.SourcesDirectory)
+              echo "Checking Dockerfile:"
+              ls -al $(Build.SourcesDirectory)/Dockerfile.azure-deployment
+            displayName: Debug Build Context
+            
+          - task: Docker@2
+            displayName: Build and push an image to container registry
+            inputs:
+              command: build
+              repository: $(containerRegistry)/$(imageRepository)
+              dockerfile: $(dockerfilePath)
+              arguments: 
+                --build-arg MIGRATION_MODE=$(MIGRATION_MODE)
+                --build-arg ENV=$(ENV)
+                --build-arg DB_USER=$(DB_USER)
+                --build-arg DB_PASSWORD=$(DB_PASSWORD)
+                --build-arg DB_NAME=$(DB_NAME)
+                --build-arg DB_HOST=$(DB_HOST)
+                --build-arg DB_PORT=$(DB_PORT)
+                --build-arg AUTH_HOST=$(AUTH_HOST)
+              tags: |
+                $(tag)
+          - task: Docker@2
+            displayName: Push an image to container registry
+            inputs:
+              command: push
+              repository: $(imageRepository)
+              containerRegistry: $(dockerRegistryServiceConnection)
+              tags: |
+                $(tag)
+          - upload: manifests
+            artifact: manifests
+
+  - stage: Deploy
+    displayName: Deploy stage
+    dependsOn: Build
+    jobs:
+      - deployment: Deploy
+        displayName: Deploy
+        pool:
+          #name: self-hosted
+          vmImage: $(vmImageName)
+        environment: "aks-lpms-dct-prod.dct-prd"
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: KubernetesManifest@1
+                  displayName: Deploy to Kubernetes cluster
+                  inputs:
+                    action: "deploy"
+                    connectionType: "kubernetesServiceConnection"
+                    kubernetesServiceConnection: "aks-lpms-dct-prod-sc"
+                    namespace: "dct-prd"
+                    manifests: "$(Pipeline.Workspace)/manifests/manifest-deployment.yml"
+                    containers: "$(containerRegistry)/$(imageRepository):$(tag)"

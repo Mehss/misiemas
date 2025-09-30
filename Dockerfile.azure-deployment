@@ -1,0 +1,74 @@
+# Stage 1: Builder
+FROM docker.io/golang:1.23.1-alpine as builder
+
+# Set the working directory
+WORKDIR /usr/src/app
+
+# Copy Go module files and download dependencies
+COPY go.mod go.sum ./
+RUN go mod download
+RUN go mod tidy
+COPY ./ /usr/src/app/
+
+# Build the Go binary with optimization flags
+RUN go build -ldflags -w -o ./bin/user-management-service .
+
+# Stage 2: Runner
+FROM docker.io/alpine:latest as run
+
+# Add CA certificates
+RUN apk add --no-cache ca-certificates && update-ca-certificates
+
+# Set the working directory for the final image
+WORKDIR /apps
+COPY --from=builder /usr/src/app/bin /apps/
+
+# Define all build arguments for environment variables
+ARG ALLOWED_ORIGINS
+ARG AZURE_AD_CLIENT_ID
+ARG AZURE_AD_CLIENT_SECRET
+ARG AZURE_AD_TENANT_ID
+ARG AZURE_REDIRECT_URI
+ARG DB_HOST
+ARG DB_HOSTNAME_EPROC
+ARG DB_NAME
+ARG DB_NAME_EPROC
+ARG DB_PASSWORD
+ARG DB_PASSWORD_EPROC
+ARG DB_PORT
+ARG DB_PORT_EPROC
+ARG DB_USER
+ARG DB_USER_EPROC
+ARG ENV
+ARG MIGRATION_MODE
+ARG PORT
+ARG SECRET_KEY
+ARG TAP_FINANCE_FRONTEND_URL
+ARG AUTH_HOST
+
+
+# Create the .env file in the container with all the variables
+RUN echo "ALLOWED_ORIGINS=$ALLOWED_ORIGINS" > /apps/.env && \
+    echo "AZURE_AD_CLIENT_ID=$AZURE_AD_CLIENT_ID" >> /apps/.env && \
+    echo "AZURE_AD_CLIENT_SECRET=$AZURE_AD_CLIENT_SECRET" >> /apps/.env && \
+    echo "AZURE_AD_TENANT_ID=$AZURE_AD_TENANT_ID" >> /apps/.env && \
+    echo "AZURE_REDIRECT_URI=$AZURE_REDIRECT_URI" >> /apps/.env && \
+    echo "AUTH_HOST=$AUTH_HOST" >> /apps/.env && \
+    echo "DB_HOST=$DB_HOST" >> /apps/.env && \
+    echo "DB_HOSTNAME_EPROC=$DB_HOSTNAME_EPROC" >> /apps/.env && \
+    echo "DB_NAME=$DB_NAME" >> /apps/.env && \
+    echo "DB_NAME_EPROC=$DB_NAME_EPROC" >> /apps/.env && \
+    echo "DB_PASSWORD=$DB_PASSWORD" >> /apps/.env && \
+    echo "DB_PASSWORD_EPROC=$DB_PASSWORD_EPROC" >> /apps/.env && \
+    echo "DB_PORT=$DB_PORT" >> /apps/.env && \
+    echo "DB_PORT_EPROC=$DB_PORT_EPROC" >> /apps/.env && \
+    echo "DB_USER=$DB_USER" >> /apps/.env && \
+    echo "DB_USER_EPROC=$DB_USER_EPROC" >> /apps/.env && \
+    echo "ENV=$ENV" >> /apps/.env && \
+    echo "MIGRATION_MODE=$MIGRATION_MODE" >> /apps/.env && \
+    echo "PORT=$PORT" >> /apps/.env && \
+    echo "SECRET_KEY=$SECRET_KEY" >> /apps/.env && \
+    echo "TAP_FINANCE_FRONTEND_URL=$TAP_FINANCE_FRONTEND_URL" >> /apps/.env
+
+# Run the compiled binary
+ENTRYPOINT ["/apps/user-management-service"]
