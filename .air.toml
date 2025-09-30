@@ -8,7 +8,7 @@ tmp_dir = "tmp"
   args_bin = []
 
   # Output binary path
-  bin = "tmp\\main.exe"
+  bin = "tmp/main.exe"
 
   # Build command
   cmd = "go build -o ./tmp/main.exe ."
